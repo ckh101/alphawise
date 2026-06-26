@@ -1,0 +1,4 @@
+✅ CSV: D:\coding\harness\output\mx_xuangu_非ST_均线多头排列_换手率1%到8%_量比0.8到2_乖离率小于15%_股价小于30元_A股.csv
+📄 描述: D:\coding\harness\output\mx_xuangu_非ST_均线多头排列_换手率1%到8%_量比0.8到2_乖离率小于15%_股价小于30元_A股_description.txt
+📊 行数: 24
+📄 原始JSON: D:\coding\harness\output\mx_xuangu_非ST_均线多头排列_换手率1%到8%_量比0.8到2_乖离率小于15%_股价小于30元_A股_raw.json

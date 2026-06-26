@@ -1,0 +1,7 @@
+=== STDOUT ===
+✅ CSV: \root\.openclaw\workspace\mx_data\output\mx_xuangu_换手率在3%到8%之间_涨幅在-1%到3%之间_股价小于30元_量比大于1.5_量比小于5_市盈率大于0_非ST股_非停牌股_A股.csv
+📄 描述: \root\.openclaw\workspace\mx_data\output\mx_xuangu_换手率在3%到8%之间_涨幅在-1%到3%之间_股价小于30元_量比大于1.5_量比小于5_市盈率大于0_非ST股_非停牌股_A股_description.txt
+📊 行数: 41
+📄 原始JSON: \root\.openclaw\workspace\mx_data\output\mx_xuangu_换手率在3%到8%之间_涨幅在-1%到3%之间_股价小于30元_量比大于1.5_量比小于5_市盈率大于0_非ST股_非停牌股_A股_raw.json
+
+=== STDERR ===

@@ -1,0 +1,4 @@
+✅ CSV: \root\.openclaw\workspace\mx_data\output\mx_xuangu_非ST_非停牌_股价5到50元_5日均量大于20日均量_涨幅0到5%_MACD金叉_换手率2%到8%_总市值大于30亿_A股.csv
+📄 描述: \root\.openclaw\workspace\mx_data\output\mx_xuangu_非ST_非停牌_股价5到50元_5日均量大于20日均量_涨幅0到5%_MACD金叉_换手率2%到8%_总市值大于30亿_A股_description.txt
+📊 行数: 11
+📄 原始JSON: \root\.openclaw\workspace\mx_data\output\mx_xuangu_非ST_非停牌_股价5到50元_5日均量大于20日均量_涨幅0到5%_MACD金叉_换手率2%到8%_总市值大于30亿_A股_raw.json

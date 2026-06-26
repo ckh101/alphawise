@@ -1,0 +1,126 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.venv/
+env/
+venv/
+ENV/
+*.log
+
+# Node / Electron
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+*.pem
+
+# Electron构建
+dist/
+out/
+build/
+frontend/build-backend/
+scripts/build/
+frontend/.cache/
+logs/worker.pid
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 项目特定
+backend/logs/
+backend/data/
+resources/config/config.local.yaml
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+
+# 测试临时文件
+backend/test_*.py
+backend/test_report.txt
+
+# 截图
+*.png
+
+# Obsidian
+.obsidian/
+
+# Claude Code 本地设置
+.claude/settings.local.json
+
+# Claude Code 工作区
+.playwright-mcp/
+.superpowers/
+.claude/worktrees/
+
+# Skill 输出文件
+backend/.claude/skills/*/output/
+.claude/projects/
+
+# 本地凭据/密钥（绝不提交）
+backend/resources/config/tencent.txt
+backend/.env
+*.pem
+*.key
+
+# 临时文件/调试产物
+harness-ui-snapshot.txt
+backend/test_*.pdf
+backend/codingharnessbackend.claudeskillsmx-searchoutput/
+/tests/__init__.py
+/tests/backend/__init__.py
+/tests/backend/conftest.py
+/tests/backend/test_agent.py
+/tests/backend/test_api_routes.py
+/tests/backend/test_config.py
+/tests/backend/test_glm_analyze.py
+/tests/backend/test_glm_chat.py
+/tests/backend/test_glm_client.py
+/tests/backend/test_logger.py
+/tests/backend/test_tdx_connection.py
+/tests/backend/test_tdx_kline.py
+/tests/backend/test_tdx_realtime_quote.py
+/tests/frontend/__init__.py
+/docs/superpowers/plans/2026-04-02-m1-project-scaffolding.md
+/docs/superpowers/plans/2026-06-05-frontend-redesign.md
+/docs/superpowers/plans/2026-06-19-performance-worker-process.md
+/docs/superpowers/plans/2026-06-19-startup-feishu-dedup.md
+/docs/superpowers/specs/2026-04-02-investment-research-agent-design.md
+/docs/superpowers/specs/2026-06-05-frontend-redesign.md
+/docs/superpowers/specs/2026-06-19-performance-worker-process-design.md
+/docs/superpowers/specs/2026-06-19-startup-feishu-dedup-design.md
+/backend/mx_output.txt

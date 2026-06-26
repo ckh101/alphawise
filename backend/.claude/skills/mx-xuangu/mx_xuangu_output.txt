@@ -1,0 +1,10 @@
+=== STDOUT ===
+✅ CSV: \root\.openclaw\workspace\mx_data\output\mx_xuangu_主力吸筹末期准备启动拉升_非ST_非停牌_A股.csv
+📄 描述: \root\.openclaw\workspace\mx_data\output\mx_xuangu_主力吸筹末期准备启动拉升_非ST_非停牌_A股_description.txt
+📊 行数: 34
+📄 原始JSON: \root\.openclaw\workspace\mx_data\output\mx_xuangu_主力吸筹末期准备启动拉升_非ST_非停牌_A股_raw.json
+
+=== STDERR ===
+
+=== RETURN CODE ===
+0

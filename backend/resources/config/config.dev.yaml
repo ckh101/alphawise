@@ -1,0 +1,48 @@
+# 开发环境配置
+
+app:
+  name: "harness-investment-research"
+  version: "0.1.0"
+  environment: "development"
+  debug: true
+  description: "Harness 投资研究平台 - 开发环境"
+
+server:
+  host: "127.0.0.1"
+  port: 9998
+  workers: 1
+  reload: true
+
+logging:
+  level: "DEBUG"
+  console: true
+  file: true
+  rotation: "100 MB"
+  retention: "10 days"
+  format: "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} | {message}"
+
+tracing:
+  enabled: true
+  sample_rate: 1.0
+
+tdx:
+  servers:
+    - host: "124.223.163.242"  # 上海双线服务器1（最快，0.001s）
+      port: 7709
+    - host: "119.147.212.81"
+      port: 7709
+    - host: "116.205.183.150"  # 广州服务器6（备用）
+      port: 7709
+  timeout: 15
+  retry: 3
+
+storage:
+  database_path: "./data/harness.db"
+  data_dir: "./data"
+
+feishu:
+  enabled: false
+  app_id: ""
+  app_secret: ""
+  verification_token: ""
+  encrypt_key: ""
