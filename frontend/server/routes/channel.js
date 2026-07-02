@@ -103,6 +103,11 @@ module.exports = async function (fastify) {
   // -----------------------------------------------------------------------
   fastify.get('/channels', async () => {
     const channels = getChannelsList();
+    // app_secret 脱敏，避免明文回到前端
+    for (const ch of channels) {
+      const secret = ch.app_secret || '';
+      ch.app_secret = secret.length > 4 ? `****${secret.slice(-4)}` : (secret ? '****' : '');
+    }
     // 从 Worker 获取运行中的通道 ID 列表
     try {
       const status = await getWorker().request('feishu.status');
@@ -122,18 +127,21 @@ module.exports = async function (fastify) {
   // POST /channels — 添加通道
   // -----------------------------------------------------------------------
   fastify.post('/channels', async (request, reply) => {
-    const { name, webhook_url, receive_id } = request.body;
-    if (!name || !webhook_url) {
+    const { name, app_id, app_secret, verification_token, encrypt_key, push_targets } = request.body;
+    if (!name || !app_id || !app_secret) {
       reply.code(400);
-      return { detail: 'name 和 webhook_url 必填' };
+      return { detail: 'name、app_id、app_secret 必填' };
     }
     try {
       const channels = getChannelsList();
       const channel = {
         id: `ch_${Date.now()}`,
         name,
-        webhook_url,
-        receive_id: receive_id || '',
+        app_id,
+        app_secret,
+        verification_token: verification_token || '',
+        encrypt_key: encrypt_key || '',
+        push_targets: Array.isArray(push_targets) ? push_targets : [],
         enabled: true,
         created_at: new Date().toISOString(),
       };
@@ -161,10 +169,15 @@ module.exports = async function (fastify) {
       return { detail: '通道不存在' };
     }
 
-    const { name, webhook_url, receive_id, enabled, push_targets } = request.body;
+    const { name, app_id, app_secret, verification_token, encrypt_key, enabled, push_targets } = request.body;
     if (name !== undefined) channels[idx].name = name;
-    if (webhook_url !== undefined) channels[idx].webhook_url = webhook_url;
-    if (receive_id !== undefined) channels[idx].receive_id = receive_id;
+    if (app_id !== undefined) channels[idx].app_id = app_id;
+    // app_secret 脱敏值（**** 开头）不覆盖原密钥，避免把脱敏串存回去
+    if (app_secret !== undefined && !String(app_secret).startsWith('****')) {
+      channels[idx].app_secret = app_secret;
+    }
+    if (verification_token !== undefined) channels[idx].verification_token = verification_token;
+    if (encrypt_key !== undefined) channels[idx].encrypt_key = encrypt_key;
     if (enabled !== undefined) channels[idx].enabled = enabled;
     if (push_targets !== undefined) channels[idx].push_targets = push_targets;
 

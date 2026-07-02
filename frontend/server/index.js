@@ -12,9 +12,11 @@ const fs = require('fs');
 const isDev = process.env.NODE_ENV === 'development';
 
 // 配置文件路径
+// 生产环境由独立 node.exe 启动（无 process.resourcesPath，仅 Electron 主进程有），
+// 故读 main.js 注入的 ELECTRON_RESOURCES_PATH 来解析真实 backend 目录。
 const backendDir = isDev
   ? path.join(__dirname, '..', '..', 'backend')
-  : path.join(process.resourcesPath || path.join(__dirname, '..', '..', 'backend'), 'backend');
+  : path.join(process.env.ELECTRON_RESOURCES_PATH || process.resourcesPath || path.join(__dirname, '..', '..', 'backend'), 'backend');
 
 const configDir = path.join(backendDir, 'resources', 'config');
 

@@ -20,6 +20,23 @@ try:
 except Exception:
     pass
 
+# === 隐藏 claude-agent-sdk 子进程的 DOS 窗口（仅 Windows）===
+# sdk 的 SubprocessCLITransport 用 anyio.open_process 启动 claude.exe（每个 agent 回合都走），
+# 未传 creationflags，Windows 上会反复弹出控制台窗口。这里在 sdk import 之前 monkey-patch
+# anyio.open_process，强制注入 CREATE_NO_WINDOW（0x08000000）。
+# 仅作用于当前进程，不改 sdk 源码，pip 重装不受影响。
+if sys.platform == "win32":
+    import subprocess as _subprocess
+    import anyio as _anyio
+
+    _orig_open_process = _anyio.open_process
+
+    async def _open_process_no_window(*args, **kwargs):
+        kwargs.setdefault("creationflags", _subprocess.CREATE_NO_WINDOW)
+        return await _orig_open_process(*args, **kwargs)
+
+    _anyio.open_process = _open_process_no_window
+
 from pathlib import Path
 
 # 路径设置：与 main.py 保持一致
