@@ -142,7 +142,8 @@ module.exports = async function (fastify) {
         verification_token: verification_token || '',
         encrypt_key: encrypt_key || '',
         push_targets: Array.isArray(push_targets) ? push_targets : [],
-        enabled: true,
+        // enabled 统一存字符串 "true"/"false"（与 Python 侧 .lower() 判断约定一致）
+        enabled: 'true',
         created_at: new Date().toISOString(),
       };
       channels.push(channel);
@@ -178,7 +179,8 @@ module.exports = async function (fastify) {
     }
     if (verification_token !== undefined) channels[idx].verification_token = verification_token;
     if (encrypt_key !== undefined) channels[idx].encrypt_key = encrypt_key;
-    if (enabled !== undefined) channels[idx].enabled = enabled;
+    // enabled 统一存字符串 "true"/"false"（前端可能传布尔，归一为字符串）
+    if (enabled !== undefined) channels[idx].enabled = enabled ? 'true' : 'false';
     if (push_targets !== undefined) channels[idx].push_targets = push_targets;
 
     saveChannelsList(channels);

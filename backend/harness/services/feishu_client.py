@@ -454,6 +454,9 @@ class FeishuClient:
             return
 
         enabled = config.get("feishu.enabled", "false")
+        # 兼容 enabled 存为布尔的历史数据（Node 端曾存布尔 True/False）
+        if isinstance(enabled, bool):
+            enabled = "true" if enabled else "false"
         if enabled.lower() != "true":
             logger.info("Feishu channel disabled")
             return
@@ -503,7 +506,11 @@ class FeishuChannelManager:
         channels = list_channels()
         started = 0
         for ch in channels:
-            if ch.get("enabled", "true").lower() != "true":
+            ch_enabled = ch.get("enabled", "true")
+            # 兼容 enabled 存为布尔的历史数据
+            if isinstance(ch_enabled, bool):
+                ch_enabled = "true" if ch_enabled else "false"
+            if ch_enabled.lower() != "true":
                 continue
             if not ch.get("app_id") or not ch.get("app_secret"):
                 continue

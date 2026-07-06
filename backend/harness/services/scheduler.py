@@ -13,6 +13,7 @@ from typing import Callable, Dict, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+from zoneinfo import ZoneInfo
 
 from harness.core.database import get_session
 from harness.core.database import SchedulerTask as SchedulerTaskModel
@@ -64,7 +65,12 @@ class TaskScheduler:
 
     def start(self) -> None:
         """启动调度器，从数据库加载所有 enabled 任务"""
-        self._scheduler = AsyncIOScheduler()
+        # 幂等：避免 worker 重复启动时 APScheduler 报 "already started"
+        if self._scheduler and self._scheduler.running:
+            return
+        # 必须显式指定本地时区：APScheduler 默认 UTC，
+        # 否则 cron "15 9 * * 1-5" 会被当作 UTC 09:15（=北京 17:15）触发。
+        self._scheduler = AsyncIOScheduler(timezone=ZoneInfo("Asia/Shanghai"))
         self._load_tasks_from_db()
         self._scheduler.start()
         logger.info("[scheduler] Started, tasks loaded")

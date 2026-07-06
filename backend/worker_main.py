@@ -78,17 +78,31 @@ _ready = False  # Agent 初始化完成后才设为 True
 
 @app.on_event("startup")
 async def startup():
-    """Worker 启动时初始化 Agent 系统，注册所有技能"""
+    """Worker 启动时初始化 Agent 系统，注册所有技能，并启动定时任务调度器"""
     global _ready
     _write_pid_file()
     from harness.agent import initialize_agent
     await initialize_agent()
+    # 启动 APScheduler：worker 是常驻进程，调度器必须在此启动，
+    # 否则 cron 任务永远不会自动触发（仅手动触发可用）。
+    # 必须在事件循环内调用，AsyncIOScheduler 才能正确挂载。
+    from harness.services.scheduler import get_scheduler
+    try:
+        get_scheduler().start()
+    except Exception as e:
+        # 调度器启动失败不应阻断 worker 就绪（飞书/AI 等其它功能照常可用）
+        print(f"[startup] scheduler start failed: {e}", flush=True)
     _ready = True
 
 
 @app.on_event("shutdown")
 async def shutdown():
-    """退出时清理 PID 文件"""
+    """退出时清理 PID 文件并关闭调度器"""
+    try:
+        from harness.services.scheduler import get_scheduler
+        get_scheduler().shutdown()
+    except Exception:
+        pass
     _remove_pid_file()
 
 
