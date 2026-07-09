@@ -7,9 +7,10 @@
     "dev": "npm run gen-icons && set NODE_ENV=development && electron .",
     "start": "electron .",
     "gen-icons": "node scripts/gen-icons.js",
-    "build": "npm run gen-icons && cross-env ELECTRON_MIRROR=https://registry.npmmirror.com/-/binary/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://registry.npmmirror.com/-/binary/electron-builder-binaries/ ELECTRON_CACHE=./.cache/electron ELECTRON_BUILDER_CACHE=./.cache/electron-builder electron-builder",
-    "build:win": "npm run gen-icons && cross-env ELECTRON_MIRROR=https://registry.npmmirror.com/-/binary/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://registry.npmmirror.com/-/binary/electron-builder-binaries/ ELECTRON_CACHE=./.cache/electron ELECTRON_BUILDER_CACHE=./.cache/electron-builder electron-builder --win",
-    "build:mac": "npm run gen-icons && electron-builder --mac",
+    "sync-backend": "node scripts/sync-backend.js",
+    "build": "npm run gen-icons && npm run sync-backend && cross-env ELECTRON_MIRROR=https://registry.npmmirror.com/-/binary/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://registry.npmmirror.com/-/binary/electron-builder-binaries/ ELECTRON_CACHE=./.cache/electron ELECTRON_BUILDER_CACHE=./.cache/electron-builder electron-builder",
+    "build:win": "npm run gen-icons && npm run sync-backend && cross-env ELECTRON_MIRROR=https://registry.npmmirror.com/-/binary/electron/ ELECTRON_BUILDER_BINARIES_MIRROR=https://registry.npmmirror.com/-/binary/electron-builder-binaries/ ELECTRON_CACHE=./.cache/electron ELECTRON_BUILDER_CACHE=./.cache/electron-builder electron-builder --win",
+    "build:mac": "npm run gen-icons && npm run sync-backend && electron-builder --mac",
     "lint": "eslint src/**/*.{js,jsx}",
     "lint:fix": "eslint src/**/*.{js,jsx} --fix"
   },

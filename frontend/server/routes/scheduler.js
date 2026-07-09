@@ -18,7 +18,10 @@ function buildCron(scheduleType, config) {
     case 'daily':
       return `${minute} ${hour} * * *`;
     case 'weekly': {
-      const days = (weekdays || [1]).join(',');
+      // APScheduler 的 CronTrigger.from_crontab 要求"星期"字段在 0-6（0=周日），
+      // 但前端 weekdays 用 1-7（7=周日）。必须把 7 转成 0，否则 task 注册时
+      // 抛 ValueError "value 7 is higher than maximum 6"，导致该任务静默不注册、永不触发。
+      const days = (weekdays || [1]).map((d) => (d === 7 ? 0 : d)).join(',');
       return `${minute} ${hour} * * ${days}`;
     }
     case 'monthly': {
