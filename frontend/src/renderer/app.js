@@ -1503,6 +1503,15 @@ async function openSettings() {
                 <div id="envVarsList"></div>
             </div>
             <div class="settings-group">
+                <div class="settings-group-title">关闭按钮行为</div>
+                <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">点窗口关闭按钮（×）时的行为。选"每次询问"会重新弹出选择对话框。</div>
+                <select id="closeBehaviorSelect" class="settings-input" style="width:100%;padding:6px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:4px">
+                    <option value="ask">每次询问</option>
+                    <option value="minimize">最小化到托盘</option>
+                    <option value="quit">退出程序</option>
+                </select>
+            </div>
+            <div class="settings-group">
                 <div class="settings-group-title">后端服务</div>
                 <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:8px">Worker 进程负责行情、K线、AI 分析等。修改环境变量后需重启生效。</div>
                 <button class="settings-btn secondary" id="restartWorkerBtn" style="width:100%">重启 Worker 进程</button>
@@ -1762,6 +1771,29 @@ async function openSettings() {
     document.getElementById('settingsAddChannelBtn').addEventListener('click', () => {
         _showChannelEditForm(null);
     });
+
+    async function _initCloseBehavior() {
+        const select = document.getElementById('closeBehaviorSelect');
+        if (!select) return;
+        try {
+            const behavior = await window.electronAPI.getCloseBehavior();
+            select.value = behavior || 'ask';
+        } catch (e) {
+            console.warn('getCloseBehavior failed', e);
+        }
+        if (!select.dataset.bound) {
+            select.addEventListener('change', async () => {
+                try {
+                    await window.electronAPI.setCloseBehavior(select.value);
+                    showToast('关闭行为已更新', 'success');
+                } catch (e) {
+                    showToast('保存失败: ' + e.message, 'error');
+                }
+            });
+            select.dataset.bound = '1';
+        }
+    }
+    _initCloseBehavior();
 
 }
 
