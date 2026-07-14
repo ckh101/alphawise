@@ -117,62 +117,22 @@ let isQuitting = false;
             checkboxLabel: '记住选择，以后不再询问',
             checkboxChecked: false,
             defaultId: 0,
-            cancelId: -1,
         });
-        // choice.response: 0=最小化, 1=退出；choice.checkboxChecked: bool
-        // cancelId -1 表示用户按 X 关闭弹窗 → 默认按"最小化"处理（不退出）
-        const result = require('electron').MessageBoxReturn ? choice : { response: choice.response, checkboxChecked: choice.checkboxChecked };
-        const remember = result.checkboxChecked;
+        const remember = choice.checkboxChecked;
         if (choice.response === 1) {
             // 退出
             if (remember) setCloseBehavior('quit');
             isQuitting = true;
             mainWindow.close();  // 这次会放行（isQuitting=true）
         } else {
-            // 最小化（含 cancel 情况）
-            if (remember) setCloseBehavior('minimize');
-            mainWindow.hide();
-        }
-    });
-
-```
-
-注意：上面 `const result = ...` 那行是冗余的兜底，实际 Electron 28 的 `showMessageBoxSync` 直接返回 `{response, checkboxChecked}` 对象。**简化为直接用 `choice.response` 和 `choice.checkboxChecked`**，删除那行冗余代码。最终版本：
-
-```js
-    mainWindow.on('close', (e) => {
-        if (isQuitting) return;
-        const behavior = getCloseBehavior();
-        if (behavior === 'minimize') {
-            e.preventDefault();
-            mainWindow.hide();
-            return;
-        }
-        if (behavior === 'quit') {
-            isQuitting = true;
-            return;
-        }
-        e.preventDefault();
-        const choice = dialog.showMessageBoxSync(mainWindow, {
-            type: 'question',
-            title: '关闭窗口',
-            message: '关闭后希望怎么做？',
-            buttons: ['最小化到托盘', '退出程序'],
-            checkboxLabel: '记住选择，以后不再询问',
-            checkboxChecked: false,
-            defaultId: 0,
-        });
-        const remember = choice.checkboxChecked;
-        if (choice.response === 1) {
-            if (remember) setCloseBehavior('quit');
-            isQuitting = true;
-            mainWindow.close();
-        } else {
+            // 最小化
             if (remember) setCloseBehavior('minimize');
             mainWindow.hide();
         }
     });
 ```
+
+
 
 - [ ] **Step 4: 确认 `dialog` 已在顶部 require**
 
