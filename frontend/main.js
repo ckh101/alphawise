@@ -400,7 +400,11 @@ app.on('ready', async () => {
     console.log('[main] App ready, mode:', isDev ? 'development' : 'production');
 
     createWindow();
-    createTray();
+    try {
+        createTray();
+    } catch (e) {
+        console.error('[main] createTray failed, tray disabled:', e.message);
+    }
 
     // 异步启动后端，前端通过 IPC 通知 ready
     startBackend().then(() => waitForServices()).then((ready) => {
