@@ -466,6 +466,18 @@ ipcMain.handle('window-close', () => {
     if (mainWindow) mainWindow.close();
 });
 
+ipcMain.handle('close-behavior:get', () => {
+    return getCloseBehavior();
+});
+
+ipcMain.handle('close-behavior:set', (event, value) => {
+    if (['ask', 'minimize', 'quit'].includes(value)) {
+        setCloseBehavior(value);
+        return true;
+    }
+    return false;
+});
+
 ipcMain.handle('window-is-maximized', () => {
     return mainWindow ? mainWindow.isMaximized() : false;
 });

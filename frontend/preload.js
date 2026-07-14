@@ -93,6 +93,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
      * 打开日志目录（调用系统文件管理器）
      */
     openLogDir: () => ipcRenderer.invoke('open-log-dir'),
+
+    /**
+     * 关闭按钮行为（ask/minimize/quit）
+     */
+    getCloseBehavior: () => ipcRenderer.invoke('close-behavior:get'),
+    setCloseBehavior: (v) => ipcRenderer.invoke('close-behavior:set', v),
 });
 
 console.log('[preload] Preload script loaded');
