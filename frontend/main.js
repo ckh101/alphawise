@@ -10,6 +10,37 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
+// === 关闭行为配置（userData/config.json）===
+// closeBehavior: 'ask' | 'minimize' | 'quit'
+const CONFIG_PATH = () => path.join(app.getPath('userData'), 'config.json');
+
+function getCloseBehavior() {
+    try {
+        if (fs.existsSync(CONFIG_PATH())) {
+            const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH(), 'utf8'));
+            if (['ask', 'minimize', 'quit'].includes(cfg.closeBehavior)) {
+                return cfg.closeBehavior;
+            }
+        }
+    } catch (e) {
+        console.error('[main] read closeBehavior failed:', e.message);
+    }
+    return 'ask';
+}
+
+function setCloseBehavior(v) {
+    try {
+        let cfg = {};
+        if (fs.existsSync(CONFIG_PATH())) {
+            cfg = JSON.parse(fs.readFileSync(CONFIG_PATH(), 'utf8'));
+        }
+        cfg.closeBehavior = v;
+        fs.writeFileSync(CONFIG_PATH(), JSON.stringify(cfg, null, 2), 'utf8');
+    } catch (e) {
+        console.error('[main] write closeBehavior failed:', e.message);
+    }
+}
+
 // EPIPE: broken pipe — 在无终端或父进程退出时静默忽略
 process.on('uncaughtException', (err) => { if (err.code === 'EPIPE') return; throw err; });
 
@@ -76,6 +107,7 @@ console.error = (...args) => {
 
 let mainWindow = null;
 let serverProcess = null;
+let isQuitting = false;
 
 /**
  * 启动 Node.js 后端（作为子进程，避免 Electron Node.js 版本兼容问题）
@@ -204,6 +236,43 @@ function createWindow() {
         // 开发模式打开开发者工具
         if (process.env.NODE_ENV === 'development') {
             mainWindow.webContents.openDevTools();
+        }
+    });
+
+    // 关闭按钮拦截：按 closeBehavior 决定隐藏/退出/询问
+    mainWindow.on('close', (e) => {
+        if (isQuitting) return;  // 真退出放行
+        const behavior = getCloseBehavior();
+        if (behavior === 'minimize') {
+            e.preventDefault();
+            mainWindow.hide();
+            return;
+        }
+        if (behavior === 'quit') {
+            isQuitting = true;
+            return;  // 放行，触发 closed → app.quit
+        }
+        // ask：弹窗
+        e.preventDefault();
+        const choice = dialog.showMessageBoxSync(mainWindow, {
+            type: 'question',
+            title: '关闭窗口',
+            message: '关闭后希望怎么做？',
+            buttons: ['最小化到托盘', '退出程序'],
+            checkboxLabel: '记住选择，以后不再询问',
+            checkboxChecked: false,
+            defaultId: 0,
+        });
+        const remember = choice.checkboxChecked;
+        if (choice.response === 1) {
+            // 退出
+            if (remember) setCloseBehavior('quit');
+            isQuitting = true;
+            mainWindow.close();  // 这次会放行（isQuitting=true）
+        } else {
+            // 最小化
+            if (remember) setCloseBehavior('minimize');
+            mainWindow.hide();
         }
     });
 
