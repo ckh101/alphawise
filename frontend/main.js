@@ -5,7 +5,7 @@
  * Node.js 后端（Fastify）随 Electron 启动，Python Worker 按需启动
  */
 
-const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog, Tray, nativeImage } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -108,6 +108,7 @@ console.error = (...args) => {
 let mainWindow = null;
 let serverProcess = null;
 let isQuitting = false;
+let tray = null;
 
 /**
  * 启动 Node.js 后端（作为子进程，避免 Electron Node.js 版本兼容问题）
@@ -285,6 +286,57 @@ function createWindow() {
     console.log('[main] Window created');
 }
 
+function createTray() {
+    const iconPath = path.join(__dirname, 'icon.png');
+    const icon = nativeImage.createFromPath(iconPath);
+    tray = new Tray(icon);
+    tray.setToolTip('灵智投研助手');
+
+    const contextMenu = Menu.buildFromTemplate([
+        {
+            label: '显示窗口',
+            click: () => {
+                if (mainWindow) {
+                    mainWindow.show();
+                    mainWindow.focus();
+                }
+            },
+        },
+        {
+            label: '重置关闭行为',
+            click: () => {
+                setCloseBehavior('ask');
+                dialog.showMessageBoxSync({
+                    type: 'info',
+                    title: '已重置',
+                    message: '已重置为每次询问。下次点关闭按钮会重新弹出选择。',
+                });
+            },
+        },
+        { type: 'separator' },
+        {
+            label: '退出',
+            click: () => {
+                isQuitting = true;
+                app.quit();
+            },
+        },
+    ]);
+    tray.setContextMenu(contextMenu);
+
+    // 单击托盘显示窗口（Windows 习惯）
+    tray.on('click', () => {
+        if (mainWindow) {
+            if (mainWindow.isVisible()) {
+                mainWindow.focus();
+            } else {
+                mainWindow.show();
+                mainWindow.focus();
+            }
+        }
+    });
+}
+
 /**
  * 轮询后端 + Worker 健康检查，直到就绪
  */
@@ -348,6 +400,7 @@ app.on('ready', async () => {
     console.log('[main] App ready, mode:', isDev ? 'development' : 'production');
 
     createWindow();
+    createTray();
 
     // 异步启动后端，前端通过 IPC 通知 ready
     startBackend().then(() => waitForServices()).then((ready) => {
@@ -386,6 +439,10 @@ app.on('activate', () => {
  */
 app.on('before-quit', () => {
     stopBackend();
+    if (tray) {
+        tray.destroy();
+        tray = null;
+    }
 });
 
 /**
