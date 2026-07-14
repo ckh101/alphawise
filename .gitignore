@@ -43,6 +43,9 @@ yarn.lock
 dist/
 out/
 build/
+# 例外：frontend/build/ 是 electron-builder 的资源目录（含 installer.nsh），不是构建产物
+!frontend/build/
+!frontend/build/**
 frontend/build-backend/
 scripts/build/
 frontend/.cache/
