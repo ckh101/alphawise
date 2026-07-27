@@ -94,6 +94,99 @@ def _forward_to_node(event_type: str, data: dict) -> None:
         pass  # 不阻塞主流程
 
 
+# ---------------------------------------------------------------------------
+# Markdown 表格解析辅助（模块级私有，供 FeishuChannelInstance 块级解析器复用）
+# ---------------------------------------------------------------------------
+
+_TABLE_CELL_RE = re.compile(r"\|")
+
+
+def _is_table_row(line: str) -> bool:
+    """是否为 GFM 表格的数据/表头行（以 | 开头并含至少一个内部分隔）。"""
+    s = line.strip()
+    return s.startswith("|") and s.count("|") >= 2
+
+
+def _is_table_separator(line: str) -> bool:
+    """是否为表格分隔行（如 |---|:--:|）。"""
+    s = line.strip()
+    if not s.startswith("|"):
+        return False
+    # 去掉首尾 | 后，每段应只含 -、: 和空白
+    inner = s.strip("|")
+    cells = inner.split("|")
+    if not cells:
+        return False
+    return all(re.fullmatch(r"\s*:?-{1,}:?\s*", c) for c in cells) and any(c.strip() for c in cells)
+
+
+def _split_table_cells(line: str) -> list[str]:
+    """拆一行表格为单元格列表，去掉首尾空单元、转义符。"""
+    s = line.strip()
+    s = s.strip("|")
+    # 用负向断言避免切到 \|
+    cells = re.split(r"(?<!\\)\|", s)
+    return [c.strip() for c in cells]
+
+
+def _strip_md_inline(text: str) -> str:
+    """剥掉单元格内的行内 markdown 标记（加粗/斜体/代码/链接），table 组件 data_type=text 用。"""
+    # 链接 [text](url) → text
+    text = re.sub(r"\[([^\]]*)\]\([^)]+\)", r"\1", text)
+    # 加粗/斜体 **x** / __x__ / *x* / _x_
+    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+    text = re.sub(r"__([^_]+)__", r"\1", text)
+    text = re.sub(r"(?<!\w)\*([^*]+)\*(?!\w)", r"\1", text)
+    text = re.sub(r"(?<!\w)_([^_]+)_(?!\w)", r"\1", text)
+    # 行内代码 `x`
+    text = re.sub(r"`([^`]+)`", r"\1", text)
+    return text.strip()
+
+
+def _build_table_element(headers: list[str], rows: list[list[str]]) -> dict:
+    """构造飞书 table 组件 JSON。列数 > 10 时截断到 10（飞书硬限）。"""
+    max_cols = 10
+    headers = headers[:max_cols]
+    col_keys = [f"c{i}" for i in range(len(headers))]
+    columns = [
+        {
+            "name": col_keys[i],
+            "display_name": _strip_md_inline(headers[i]),
+            "data_type": "text",
+            "width": "auto",
+        }
+        for i in range(len(headers))
+    ]
+    table_rows: list[dict] = []
+    for raw_row in rows:
+        row_obj: dict = {}
+        for i in range(len(headers)):
+            cell = raw_row[i] if i < len(raw_row) else ""
+            row_obj[col_keys[i]] = _strip_md_inline(cell)
+        table_rows.append(row_obj)
+    return {
+        "tag": "table",
+        "page_size": min(10, max(1, len(table_rows))) if table_rows else 1,
+        "row_height": "low",
+        "columns": columns,
+        "rows": table_rows,
+    }
+
+
+def _extract_card_text(card: dict) -> str:
+    """从卡片 JSON 提取全部纯文本，用于 230099 降级纯文本兜底。"""
+    parts: list[str] = []
+    body = card.get("body") or {}
+    for el in body.get("elements", []):
+        tag = el.get("tag")
+        if tag == "markdown":
+            parts.append(el.get("content", ""))
+        elif tag == "table":
+            for row in el.get("rows", []):
+                parts.append(" | ".join(str(v) for v in row.values()))
+    return "\n".join(p for p in parts if p)
+
+
 class FeishuChannelInstance:
     """单个飞书通道实例（一个 app_id 对应一个连接）"""
 
@@ -300,6 +393,124 @@ class FeishuChannelInstance:
         text = re.sub(r'<img[^>]*>', '', text)
         return text
 
+    # ------------------------------------------------------------------
+    # Markdown → 飞书卡片 JSON 转换
+    # 飞书卡片 markdown 元素不支持 GFM 表格，表格必须用 table 组件。
+    # 这里把 report 解析成块级序列，表格转 table 组件，其余转 markdown 元素。
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_markdown_blocks(text: str) -> list[dict]:
+        """把 markdown 解析成块级序列。
+
+        每块形如：
+          {"type": "md", "content": <原始 md 文本>}      # 标题/段落/列表/代码块等，飞书 markdown 元素能渲染
+          {"type": "table", "headers": [...], "rows": [[...], ...]}  # GFM 表格
+
+        相邻的非表格块合并成一个 md 块，减少卡片元素数量。
+        """
+        lines = text.split("\n")
+        blocks: list[dict] = []
+        md_buf: list[str] = []
+
+        def flush_md() -> None:
+            if md_buf:
+                content = "\n".join(md_buf).strip()
+                if content:
+                    blocks.append({"type": "md", "content": content})
+                md_buf.clear()
+
+        i = 0
+        n = len(lines)
+        while i < n:
+            line = lines[i]
+
+            # 识别 GFM 表格：一行 |...| 紧跟一行 |---|---|
+            if _is_table_row(line) and i + 1 < n and _is_table_separator(lines[i + 1]):
+                flush_md()
+                headers = _split_table_cells(line)
+                # 分隔行跳过
+                j = i + 2
+                rows: list[list[str]] = []
+                while j < n and _is_table_row(lines[j]):
+                    rows.append(_split_table_cells(lines[j]))
+                    j += 1
+                blocks.append({"type": "table", "headers": headers, "rows": rows})
+                i = j
+                continue
+
+            md_buf.append(line)
+            i += 1
+
+        flush_md()
+        return blocks
+
+    @staticmethod
+    def _blocks_to_card_elements(blocks: list[dict]) -> list[dict]:
+        """块序列 → 飞书卡片 body.elements 数组。
+
+        table 块 → table 组件（单元格 data_type=text，剥掉单元格内的 markdown 标记）
+        md 块    → markdown 元素
+        """
+        elements: list[dict] = []
+        for block in blocks:
+            if block["type"] == "table":
+                elements.append(_build_table_element(block["headers"], block["rows"]))
+            else:
+                elements.append({"tag": "markdown", "content": block["content"]})
+        return elements
+
+    @staticmethod
+    def _elements_to_cards(elements: list[dict]) -> list[dict]:
+        """把 elements 装配成 1~N 张飞书卡片（schema 2.0）。
+
+        拆卡条件（飞书硬限）：单卡 table 组件 ≥ 5 个时，下一个 table 开新卡；
+        以及单卡累计内容字符数超过安全阈值（25000）时开新卡。
+        """
+        MAX_TABLE_PER_CARD = 5
+        MAX_CHARS_PER_CARD = 25000
+        cards: list[dict] = []
+        cur_elements: list[dict] = []
+        cur_table_count = 0
+        cur_chars = 0
+
+        def cur_card() -> dict:
+            return {
+                "schema": "2.0",
+                "config": {"update_multi": True},
+                "body": {
+                    "direction": "vertical",
+                    "elements": list(cur_elements),
+                },
+            }
+
+        for el in elements:
+            is_table = el.get("tag") == "table"
+            el_chars = len(json.dumps(el, ensure_ascii=False))
+            # 当前元素放进去会超限，且当前卡已有内容 → 封卡开新卡
+            over_table = is_table and cur_table_count >= MAX_TABLE_PER_CARD
+            over_chars = cur_chars + el_chars > MAX_CHARS_PER_CARD and cur_elements
+            if cur_elements and (over_table or over_chars):
+                cards.append(cur_card())
+                cur_elements = []
+                cur_table_count = 0
+                cur_chars = 0
+            cur_elements.append(el)
+            if is_table:
+                cur_table_count += 1
+            cur_chars += el_chars
+
+        if cur_elements:
+            cards.append(cur_card())
+        return cards
+
+    @staticmethod
+    def _markdown_to_cards(text: str) -> list[dict]:
+        """一条龙：markdown 文本 → 飞书卡片 JSON 列表。"""
+        blocks = FeishuChannelInstance._parse_markdown_blocks(text)
+        elements = FeishuChannelInstance._blocks_to_card_elements(blocks)
+        return FeishuChannelInstance._elements_to_cards(elements)
+
     def _send_reply(self, reply_to_msg_id: str, text: str, chat_id: str = "") -> None:
         if not self._lark_client:
             logger.warning(f"[{self.channel_name}] skip reply: lark_client is None")
@@ -316,51 +527,13 @@ class FeishuChannelInstance:
                 CreateMessageRequest, CreateMessageRequestBody,
                 ReplyMessageRequest, ReplyMessageRequestBody,
             )
-            chunks = self._split_text(text, 28000)
+            cards = self._markdown_to_cards(text)
 
-            # 构建消息卡片（chunks 共用）
-            def _build_card(chunk: str) -> str:
-                return json.dumps({
-                    "schema": "2.0",
-                    "config": {"update_multi": True},
-                    "body": {
-                        "direction": "vertical",
-                        "elements": [{"tag": "markdown", "content": chunk}]
-                    }
-                })
-
-            def _send_create(chunk: str) -> bool:
-                """CreateMessage 兜底（不依赖 msg_id）；卡片表格超限时降级纯文本"""
+            def _send_text(text_content: str) -> bool:
+                """纯文本发送（按 4000 字符切分）—— 230099 兜底"""
                 if not chat_id:
                     return False
-                create_req = CreateMessageRequest.builder() \
-                    .receive_id_type("chat_id") \
-                    .request_body(
-                        CreateMessageRequestBody.builder()
-                        .receive_id(chat_id)
-                        .msg_type("interactive")
-                        .content(_build_card(chunk))
-                        .build()
-                    ) \
-                    .build()
-                for attempt in range(3):
-                    resp = self._lark_client.im.v1.message.create(create_req)
-                    if resp.success():
-                        return True
-                    # 卡片表格超限，重试无意义，降级纯文本
-                    if resp.code == 230099:
-                        logger.warning(f"[{self.channel_name}] card table over limit, fallback to text: chat_id={chat_id}")
-                        return _send_text(chunk)
-                    logger.warning(f"[{self.channel_name}] CreateMessage failed (attempt {attempt+1}): code={resp.code}")
-                    if attempt < 2:
-                        _time.sleep(1)
-                return False
-
-            def _send_text(chunk: str) -> bool:
-                """纯文本发送（按 4000 字符切分）"""
-                if not chat_id:
-                    return False
-                for t in self._split_text(chunk, 4000):
+                for t in self._split_text(text_content, 4000):
                     treq = CreateMessageRequest.builder() \
                         .receive_id_type("chat_id") \
                         .request_body(
@@ -377,15 +550,42 @@ class FeishuChannelInstance:
                         return False
                 return True
 
-            # 第一个 chunk：先尝试 ReplyMessage（仅1次），失败则整个回复走 CreateMessage
+            def _send_create(card: dict) -> bool:
+                """CreateMessage 发单张卡片；230099 时降级纯文本（取卡片内全部文本）"""
+                if not chat_id:
+                    return False
+                create_req = CreateMessageRequest.builder() \
+                    .receive_id_type("chat_id") \
+                    .request_body(
+                        CreateMessageRequestBody.builder()
+                        .receive_id(chat_id)
+                        .msg_type("interactive")
+                        .content(json.dumps(card, ensure_ascii=False))
+                        .build()
+                    ) \
+                    .build()
+                for attempt in range(3):
+                    resp = self._lark_client.im.v1.message.create(create_req)
+                    if resp.success():
+                        return True
+                    # 卡片表格超限，重试无意义，降级纯文本
+                    if resp.code == 230099:
+                        logger.warning(f"[{self.channel_name}] card table over limit, fallback to text: chat_id={chat_id}")
+                        return _send_text(_extract_card_text(card))
+                    logger.warning(f"[{self.channel_name}] CreateMessage failed (attempt {attempt+1}): code={resp.code}")
+                    if attempt < 2:
+                        _time.sleep(1)
+                return False
+
+            # 第一张卡：先尝试 ReplyMessage（仅1次），失败则整个回复走 CreateMessage
             use_reply = True
-            first_card = _build_card(chunks[0])
+            first_card = cards[0]
             reply_req = ReplyMessageRequest.builder() \
                 .message_id(reply_to_msg_id) \
                 .request_body(
                     ReplyMessageRequestBody.builder()
                     .msg_type("interactive")
-                    .content(first_card)
+                    .content(json.dumps(first_card, ensure_ascii=False))
                     .build()
                 ) \
                 .build()
@@ -393,17 +593,17 @@ class FeishuChannelInstance:
             if not resp.success():
                 logger.warning(f"[{self.channel_name}] ReplyMessage failed: code={resp.code}, msg={resp.msg}, fallback to CreateMessage")
                 use_reply = False
-                if not _send_create(chunks[0]):
-                    logger.error(f"[{self.channel_name}] first chunk send failed, abort remaining chunks: chat_id={chat_id}")
+                if not _send_create(cards[0]):
+                    logger.error(f"[{self.channel_name}] first card send failed, abort remaining cards: chat_id={chat_id}")
                     return
 
-            # 后续 chunks 全部用 CreateMessage
-            for chunk in chunks[1:]:
-                if not _send_create(chunk):
-                    logger.error(f"[{self.channel_name}] chunk send failed, abort: chat_id={chat_id}")
+            # 后续卡片全部用 CreateMessage
+            for card in cards[1:]:
+                if not _send_create(card):
+                    logger.error(f"[{self.channel_name}] card send failed, abort: chat_id={chat_id}")
                     break
 
-            logger.info(f"[{self.channel_name}] reply sent: msg_id={reply_to_msg_id}, use_reply={use_reply}, chunks={len(chunks)}")
+            logger.info(f"[{self.channel_name}] reply sent: msg_id={reply_to_msg_id}, use_reply={use_reply}, cards={len(cards)}")
         except Exception as e:
             logger.error(f"[{self.channel_name}] reply error: {e}", exc_info=True)
 
@@ -631,11 +831,11 @@ def send_feishu_message(receive_id: str, receive_id_type: str, text: str,
     text = FeishuChannelInstance._sanitize_for_card(text)
 
     try:
-        chunks = FeishuChannelInstance._split_text(text, 28000)
+        cards = FeishuChannelInstance._markdown_to_cards(text)
 
-        def _send_text_fallback(chunk: str) -> bool:
+        def _send_text_fallback(text_content: str) -> bool:
             """卡片表格超限(code 230099)时降级为纯文本发送，按 4000 字符切分"""
-            for t in FeishuChannelInstance._split_text(chunk, 4000):
+            for t in FeishuChannelInstance._split_text(text_content, 4000):
                 treq = CreateMessageRequest.builder() \
                     .receive_id_type(receive_id_type) \
                     .request_body(
@@ -651,22 +851,14 @@ def send_feishu_message(receive_id: str, receive_id_type: str, text: str,
                     return False
             return True
 
-        for i, chunk in enumerate(chunks):
-            card = {
-                "schema": "2.0",
-                "config": {"update_multi": True},
-                "body": {
-                    "direction": "vertical",
-                    "elements": [{"tag": "markdown", "content": chunk}]
-                }
-            }
+        for i, card in enumerate(cards):
             req = CreateMessageRequest.builder() \
                 .receive_id_type(receive_id_type) \
                 .request_body(
                     CreateMessageRequestBody.builder()
                     .receive_id(receive_id)
                     .msg_type("interactive")
-                    .content(json.dumps(card))
+                    .content(json.dumps(card, ensure_ascii=False))
                     .build()
                 ) \
                 .build()
@@ -681,7 +873,7 @@ def send_feishu_message(receive_id: str, receive_id_type: str, text: str,
                 # 卡片表格超限，重试无意义，直接降级纯文本
                 if resp.code == 230099:
                     logger.warning(f"[send_feishu_message] card table over limit, fallback to text: receive_id={receive_id}")
-                    sent = _send_text_fallback(chunk)
+                    sent = _send_text_fallback(_extract_card_text(card))
                     break
                 logger.warning(f"[send_feishu_message] failed (attempt {attempt+1}): code={resp.code}, msg={resp.msg}")
                 if attempt < 2:
@@ -689,7 +881,7 @@ def send_feishu_message(receive_id: str, receive_id_type: str, text: str,
             if not sent:
                 logger.error(f"[send_feishu_message] failed after retries: receive_id={receive_id}, last_code={last_code}")
                 return False
-        logger.info(f"[send_feishu_message] sent: receive_id={receive_id}, chunks={len(chunks)}")
+        logger.info(f"[send_feishu_message] sent: receive_id={receive_id}, cards={len(cards)}")
         return True
     except Exception as e:
         logger.error(f"[send_feishu_message] error: {e}", exc_info=True)
