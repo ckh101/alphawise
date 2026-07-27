@@ -542,6 +542,7 @@ async function sendMessage(message) {
             appState.isAnalyzing = false;
             appState._abortController = null;
             _resetSendBtn();
+            clearStreamingBubble();
             if (!appState.messages.length || appState.messages[appState.messages.length - 1]?.role !== 'assistant') {
                 addAssistantMessage('⏹ 已中断');
             }
@@ -562,6 +563,8 @@ async function sendMessage(message) {
         (data) => {
             removeThinkingIndicator(thinkingId);
             _resetSendBtn();
+            // 流式报告已完成，移除临时气泡，由下方 addAssistantMessage 渲染最终 markdown
+            clearStreamingBubble();
 
             if (data.session_id) appState.sessionId = data.session_id;
             if (data.stock_symbol) appState.currentSymbol = data.stock_symbol;
@@ -626,9 +629,12 @@ async function sendMessage(message) {
             }
             appState.isAnalyzing = false;
             appState._abortController = null;
+            clearStreamingBubble();
             loadSessionList();
         },
-        abortController.signal
+        abortController.signal,
+        // onToken：报告逐 token 增量，打字机渲染（纯文本阶段，最终 markdown 由 onResult 渲染）
+        appendStreamingToken
     );
 }
 
@@ -1176,6 +1182,49 @@ function _fixMarkdownTables(text) {
     return text.replace(/((?:^\|.+\|?$\n?)+)/gm, (block) => {
         return block.replace(/\n{2,}/g, '\n');
     });
+}
+
+// 流式报告渲染：第一个 token 到达时建临时气泡，逐 token 追加纯文本；
+// onResult 时调 _finalizeStreamingBubble 用 marked 整段替换，再交给标准渲染。
+let _streamingBubble = null;
+
+function _ensureStreamingBubble() {
+    if (_streamingBubble) return _streamingBubble;
+    const chatMessages = document.getElementById('chatMessages');
+    const avatarSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2L2 7l10 5 10 5-10-5z"/>
+        <path d="M2 17l10 5 10-5"/>
+        <path d="M2 12l10 5 10-5"/>
+    </svg>`;
+    const div = document.createElement('div');
+    div.className = 'chat-message assistant';
+    div.innerHTML = `
+        <div class="message-avatar">${avatarSvg}</div>
+        <div class="message-content">
+            <div class="message-name">灵智投研助手</div>
+            <div class="result-card">
+                <div class="message-bubble markdown-content streaming"></div>
+            </div>
+        </div>
+    `;
+    chatMessages.appendChild(div);
+    _streamingBubble = div.querySelector('.message-bubble');
+    scrollToBottom();
+    return _streamingBubble;
+}
+
+function appendStreamingToken(token) {
+    const bubble = _ensureStreamingBubble();
+    // 纯文本追加（不调 marked，避免半截 markdown 错乱），转义防 XSS
+    bubble.textContent += token;
+    scrollToBottom();
+}
+
+function clearStreamingBubble() {
+    if (_streamingBubble && _streamingBubble.parentElement) {
+        _streamingBubble.parentElement.parentElement.remove();
+    }
+    _streamingBubble = null;
 }
 
 function addAssistantMessage(content, isMarkdown = false, metadata = null) {

@@ -820,6 +820,26 @@ class ReactOrchestrator:
                 logger.warning("[SDK] IWENCAI_API_KEY not configured, news-search skill will not work")
 
         from harness.services.glm_agent_client import _run_sdk_agent_sync, _get_project_root
+
+        # 流式 token 桥接：_run_sdk_agent_sync 在子线程的独立 ProactorEventLoop 里跑 SDK，
+        # 这里把主 loop 引用捕获，token_cb 在子线程被调用时用 run_coroutine_threadsafe
+        # 把"投递 streaming token 事件"的协程调度回主 loop（progress_callback 绑在主 loop）。
+        main_loop = asyncio.get_running_loop()
+
+        async def _emit_token(chunk: str) -> None:
+            if progress_callback:
+                try:
+                    await progress_callback({
+                        "phase": "report",
+                        "status": "streaming",
+                        "token": chunk,
+                    })
+                except Exception as e:
+                    logger.warning(f"[SDK] progress_callback(streaming) error (ignored): {e}")
+
+        def token_cb(chunk: str) -> None:
+            asyncio.run_coroutine_threadsafe(_emit_token(chunk), main_loop)
+
         max_retries = 3
         sdk_result = None
         last_error = None
@@ -829,6 +849,7 @@ class ReactOrchestrator:
                     _run_sdk_agent_sync,
                     system_prompt, model, enhanced_prompt,
                     self._sdk_mcp_server, _get_project_root(),
+                    token_cb,
                 )
                 if sdk_result:
                     break
@@ -890,6 +911,7 @@ class ReactOrchestrator:
                         _run_sdk_agent_sync,
                         continue_system, model, continue_prompt,
                         None, _get_project_root(),  # 不传 MCP server，阻止工具调用
+                        token_cb,
                     )
 
                     if continue_result:

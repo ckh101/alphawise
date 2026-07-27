@@ -131,8 +131,13 @@ def _run_sdk_agent_sync(
     user_message: str,
     mcp_server_config: Any,
     project_root: str,
+    token_cb: Any = None,
 ) -> str:
-    """在独立线程的 ProactorEventLoop 中运行 SDK Agent（Windows 兼容）"""
+    """在独立线程的 ProactorEventLoop 中运行 SDK Agent（Windows 兼容）
+
+    token_cb: 可选的同步回调，签名 token_cb(chunk: str) -> None。
+              在子线程内被调用，调用方负责把 chunk 桥接回主 loop（用 run_coroutine_threadsafe）。
+    """
     if sys.platform == "win32":
         loop = asyncio.ProactorEventLoop()
     else:
@@ -140,7 +145,7 @@ def _run_sdk_agent_sync(
     asyncio.set_event_loop(loop)
     try:
         return loop.run_until_complete(
-            _sdk_agent_core(system_prompt, model, user_message, mcp_server_config, project_root)
+            _sdk_agent_core(system_prompt, model, user_message, mcp_server_config, project_root, token_cb)
         )
     finally:
         loop.close()
@@ -152,6 +157,7 @@ async def _sdk_agent_core(
     user_message: str,
     mcp_server_config: Any,
     project_root: str,
+    token_cb: Any = None,
 ) -> dict[str, Any]:
     """SDK Agent 异步核心：自主规划 + 工具调用 + Skills 自动发现
 
@@ -194,6 +200,14 @@ async def _sdk_agent_core(
                     for block in msg.content:
                         if isinstance(block, TextBlock):
                             result_text += block.text
+                            # 逐块投递增量文本，供前端流式渲染（打字机效果）。
+                            # token_cb 在子线程内被调用，调用方负责桥接回主 loop。
+                            # 失败一律吞掉：流式渲染是体验优化，不能影响主流程。
+                            if token_cb:
+                                try:
+                                    token_cb(block.text)
+                                except Exception as e:
+                                    logger.warning(f"[SDK] token_cb error (ignored): {e}")
                         elif isinstance(block, ToolUseBlock):
                             turn_tools.append({
                                 "tool_name": block.name,

@@ -196,8 +196,9 @@ const glmAPI = {
    * @param {Function} onProgress - 进度回调 (progressEvent) => void
    * @param {Function} onResult - 结果回调 (resultData) => void
    * @param {Function} onError - 错误回调 (errorData) => void
+   * @param {Function} [onToken] - 报告流式 token 回调 (tokenStr) => void，用于打字机效果
    */
-  reactAnalyzeStream(prompt, sessionId = null, fileContext = null, onProgress, onResult, onError, signal = null) {
+  reactAnalyzeStream(prompt, sessionId = null, fileContext = null, onProgress, onResult, onError, signal = null, onToken = null) {
     const body = {
       prompt,
       task_type: 'analysis'
@@ -235,8 +236,14 @@ const glmAPI = {
             if (line.startsWith('data: ')) {
               try {
                 const event = JSON.parse(line.slice(6));
-                if (event.type === 'progress' && onProgress) {
-                  onProgress(event.data);
+                if (event.type === 'progress') {
+                  const data = event.data || {};
+                  if (data.status === 'streaming' && typeof data.token === 'string') {
+                    // 报告逐 token 增量，走打字机渲染
+                    if (onToken) onToken(data.token);
+                  } else if (onProgress) {
+                    onProgress(data);
+                  }
                 } else if (event.type === 'result' && onResult) {
                   onResult(event.data);
                 } else if (event.type === 'error' && onError) {

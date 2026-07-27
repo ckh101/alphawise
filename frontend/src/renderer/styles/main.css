@@ -496,6 +496,15 @@ body {
   border-radius: var(--r-sm); padding: 10px 12px; overflow-x: auto;
 }
 .markdown-content a { color: var(--gold); }
+/* 流式报告渲染中的打字机光标 */
+.markdown-content.streaming::after {
+  content: '▍';
+  display: inline-block;
+  margin-left: 2px;
+  color: var(--gold);
+  animation: stream-blink 0.9s steps(2, start) infinite;
+}
+@keyframes stream-blink { to { visibility: hidden; } }
 .markdown-content blockquote {
   border-left: 2px solid var(--border-active);
   padding-left: 10px; color: var(--text-secondary); margin: 6px 0;
