@@ -46,6 +46,9 @@ build/
 # 例外：frontend/build/ 是 electron-builder 的资源目录（含 installer.nsh），不是构建产物
 !frontend/build/
 !frontend/build/**
+# 例外：frontend/server/lib/ 是 Node.js 后端核心代码，被上面 Python 模板的 lib/ 规则误伤
+!frontend/server/lib/
+!frontend/server/lib/**
 frontend/build-backend/
 scripts/build/
 frontend/.cache/
