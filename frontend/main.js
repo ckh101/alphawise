@@ -253,9 +253,9 @@ function createWindow() {
             isQuitting = true;
             return;  // 放行，触发 closed → app.quit
         }
-        // ask：弹窗
+        // ask：弹窗（必须用异步版 showMessageBox，同步版返回 number 拿不到 checkbox 状态）
         e.preventDefault();
-        const choice = dialog.showMessageBoxSync(mainWindow, {
+        dialog.showMessageBox(mainWindow, {
             type: 'question',
             title: '关闭窗口',
             message: '关闭后希望怎么做？',
@@ -263,18 +263,19 @@ function createWindow() {
             checkboxLabel: '记住选择，以后不再询问',
             checkboxChecked: false,
             defaultId: 0,
+        }).then((choice) => {
+            const remember = choice.checkboxChecked;
+            if (choice.response === 1) {
+                // 退出
+                if (remember) setCloseBehavior('quit');
+                isQuitting = true;
+                mainWindow.close();  // 这次会放行（isQuitting=true）
+            } else {
+                // 最小化
+                if (remember) setCloseBehavior('minimize');
+                mainWindow.hide();
+            }
         });
-        const remember = choice.checkboxChecked;
-        if (choice.response === 1) {
-            // 退出
-            if (remember) setCloseBehavior('quit');
-            isQuitting = true;
-            mainWindow.close();  // 这次会放行（isQuitting=true）
-        } else {
-            // 最小化
-            if (remember) setCloseBehavior('minimize');
-            mainWindow.hide();
-        }
     });
 
     // 窗口关闭时
