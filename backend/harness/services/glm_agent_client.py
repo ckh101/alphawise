@@ -166,7 +166,7 @@ async def _sdk_agent_core(
     """
     from claude_agent_sdk.types import (
         AssistantMessage, TextBlock, ToolUseBlock, ToolResultBlock,
-        ThinkingBlock, ResultMessage, SystemMessage,
+        ThinkingBlock, ResultMessage, SystemMessage, StreamEvent,
     )
     from harness.core.database import get_sdk_config
     sdk_config = get_sdk_config()
@@ -194,20 +194,22 @@ async def _sdk_agent_core(
         async with ClaudeSDKClient(options=options) as client:
             await client.query(user_message)
             async for msg in client.receive_response():
+                # StreamEvent 携带 Anthropic 原始流事件，逐 token 增量在这里（不在 AssistantMessage）。
+                # 只投递主对话文本（parent_tool_use_id is None），跳过工具内部子调用的文本。
+                if isinstance(msg, StreamEvent) and token_cb:
+                    delta = msg.event.get("delta") if isinstance(msg.event, dict) else None
+                    if delta and delta.get("type") == "text_delta" and delta.get("text"):
+                        if not msg.parent_tool_use_id:
+                            try:
+                                token_cb(delta["text"])
+                            except Exception as e:
+                                logger.warning(f"[SDK] token_cb error (ignored): {e}")
                 if isinstance(msg, AssistantMessage):
                     thinking_text = ""
                     turn_tools = []
                     for block in msg.content:
                         if isinstance(block, TextBlock):
                             result_text += block.text
-                            # 逐块投递增量文本，供前端流式渲染（打字机效果）。
-                            # token_cb 在子线程内被调用，调用方负责桥接回主 loop。
-                            # 失败一律吞掉：流式渲染是体验优化，不能影响主流程。
-                            if token_cb:
-                                try:
-                                    token_cb(block.text)
-                                except Exception as e:
-                                    logger.warning(f"[SDK] token_cb error (ignored): {e}")
                         elif isinstance(block, ToolUseBlock):
                             turn_tools.append({
                                 "tool_name": block.name,

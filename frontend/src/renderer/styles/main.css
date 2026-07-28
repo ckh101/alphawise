@@ -498,13 +498,16 @@ body {
 .markdown-content a { color: var(--gold); }
 /* 流式报告渲染中的打字机光标 */
 .markdown-content.streaming::after {
-  content: '▍';
+  content: '';
   display: inline-block;
-  margin-left: 2px;
-  color: var(--gold);
+  width: 7px;
+  height: 1em;
+  margin-left: 3px;
+  vertical-align: text-bottom;
+  border-left: 2px solid var(--gold);
   animation: stream-blink 0.9s steps(2, start) infinite;
 }
-@keyframes stream-blink { to { visibility: hidden; } }
+@keyframes stream-blink { to { opacity: 0; } }
 .markdown-content blockquote {
   border-left: 2px solid var(--border-active);
   padding-left: 10px; color: var(--text-secondary); margin: 6px 0;

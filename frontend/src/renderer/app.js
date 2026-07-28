@@ -1184,13 +1184,21 @@ function _fixMarkdownTables(text) {
     });
 }
 
-// 流式报告渲染：第一个 token 到达时建临时气泡，逐 token 追加纯文本；
-// onResult 时调 _finalizeStreamingBubble 用 marked 整段替换，再交给标准渲染。
+// 流式报告渲染：第一个 token 到达时建临时气泡，逐 token 累积进 buffer，
+// 节流渲染（marked 整段解析）实现"边输出边渲染"；onResult 时清掉临时气泡，
+// 由 addAssistantMessage 渲染最终 markdown（与流式同一路径，结果一致）。
 let _streamingBubble = null;
+let _streamingBuffer = '';
+let _streamingRenderTimer = null;
 
 function _ensureStreamingBubble() {
     if (_streamingBubble) return _streamingBubble;
     const chatMessages = document.getElementById('chatMessages');
+    // 第一个 token 已到达，说明 LLM 开始输出报告，移除"正在分析"指示器，避免两个框并存
+    document.querySelectorAll('.thinking-indicator').forEach((el) => {
+        const msg = el.closest('.chat-message');
+        if (msg) msg.remove();
+    });
     const avatarSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M12 2L2 7l10 5 10 5-10-5z"/>
         <path d="M2 17l10 5 10-5"/>
@@ -1215,16 +1223,43 @@ function _ensureStreamingBubble() {
 
 function appendStreamingToken(token) {
     const bubble = _ensureStreamingBubble();
-    // 纯文本追加（不调 marked，避免半截 markdown 错乱），转义防 XSS
-    bubble.textContent += token;
+    _streamingBuffer += token;
+    // 节流渲染：每 80ms 最多一次 marked 整段解析，避免每个 token 都触发 reflow
+    if (_streamingRenderTimer) return;
+    _streamingRenderTimer = setTimeout(() => {
+        _streamingRenderTimer = null;
+        renderStreamingBuffer();
+    }, 80);
+}
+
+function renderStreamingBuffer() {
+    if (!_streamingBubble) return;
+    const canParse = typeof marked !== 'undefined' && typeof marked.parse === 'function';
+    let html;
+    if (canParse) {
+        // 与 addAssistantMessage 走完全相同的渲染路径，保证最终态零差异
+        html = marked.parse(_fixMarkdownTables(_streamingBuffer));
+    } else {
+        html = escapeHtml(_streamingBuffer);
+    }
+    _streamingBubble.innerHTML = html;
     scrollToBottom();
 }
 
 function clearStreamingBubble() {
-    if (_streamingBubble && _streamingBubble.parentElement) {
-        _streamingBubble.parentElement.parentElement.remove();
+    if (_streamingBubble) {
+        // 从 .message-bubble 往上找到整个 .chat-message 节点移除，避免残留空头像框
+        const msgNode = _streamingBubble.closest('.chat-message');
+        if (msgNode && msgNode.parentElement) {
+            msgNode.remove();
+        }
+    }
+    if (_streamingRenderTimer) {
+        clearTimeout(_streamingRenderTimer);
+        _streamingRenderTimer = null;
     }
     _streamingBubble = null;
+    _streamingBuffer = '';
 }
 
 function addAssistantMessage(content, isMarkdown = false, metadata = null) {
