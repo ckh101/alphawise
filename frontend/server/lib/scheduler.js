@@ -83,10 +83,10 @@ function schedule(task) {
 
     const tick = () => {
       const now = new Date();
-      // 对齐到整分，秒=0 才判（tick 每分钟跑一次，seconds 一般是 0~2）
+      // lastFired（时:分）已能防止同一分钟重复触发；不再用秒数挡截——
+      // setInterval 相位若落在 31~59 秒，秒数挡截会把所有 tick 全杀掉，任务永不触发。
       const key = `${now.getHours()}:${now.getMinutes()}`;
       if (key === lastFired) return;
-      if (now.getSeconds() > 30) return; // 避免延迟超过半分钟时误触发下一分钟
       if (!shouldFire(now)) return;
       lastFired = key;
       trigger();
@@ -141,8 +141,8 @@ function schedule(task) {
     let lastFired = '';
     const tick = () => {
       const now = new Date();
-      // 整分对齐：tick 每分钟一次，seconds 一般 0~2；超过半分钟则跳过避免误判下一分钟
-      if (now.getSeconds() > 30) return;
+      // lastFired（时:分）已能防止同一分钟重复触发；不再用秒数挡截——
+      // setInterval 相位若落在 31~59 秒，秒数挡截会把所有 tick 全杀掉，任务永不触发。
       const key = `${now.getHours()}:${now.getMinutes()}`;
       if (key === lastFired) return;
       const jsDow = now.getDay(); // 0=周日…6=周六
