@@ -115,7 +115,34 @@ class TaskScheduler:
                 # 用 interval trigger，每 N 分钟触发一次
                 trigger = IntervalTrigger(minutes=interval_min)
             else:
-                trigger = CronTrigger.from_crontab(cron_expr)
+                # 注意：APScheduler 的数字 day_of_week 是 0=周一…6=周日（Python
+                # date.weekday()），而标准 crontab 是 0=周日…6=周六。from_crontab
+                # 对纯数字周字段（如 "15 9 * * 1,2,3,4,5"）不做标准转换，会整体后移
+                # 一天（1-5 被当成周二~周六），导致周一不触发、周六误触发。
+                # 修复：把周字段转成字母（mon-fri）再构造，绕开数字陷阱。
+                fields = cron_expr.split()
+                dow_map = {0: "sun", 1: "mon", 2: "tue", 3: "wed",
+                           4: "thu", 5: "fri", 6: "sat", 7: "sun"}
+                dow = fields[4] if len(fields) >= 5 else "*"
+                if dow != "*":
+                    import re
+                    names = []
+                    for part in dow.split(","):
+                        m = re.match(r"^(\d)-(\d)$", part)
+                        if m:
+                            lo, hi = int(m.group(1)), int(m.group(2))
+                            names.append("-".join(dow_map[v] for v in range(lo, hi + 1)))
+                        elif part.isdigit():
+                            names.append(dow_map[int(part) % 7])
+                        else:
+                            names.append(part)  # 已是字母等，原样保留
+                    trigger = CronTrigger(
+                        minute=fields[0], hour=fields[1],
+                        day=fields[2], month=fields[3],
+                        day_of_week=",".join(names), timezone=ZoneInfo("Asia/Shanghai"),
+                    )
+                else:
+                    trigger = CronTrigger.from_crontab(cron_expr)
 
             self._scheduler.add_job(
                 self._execute_task,
