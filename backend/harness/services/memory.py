@@ -38,6 +38,9 @@ class MemoryManager:
         for d in (self._short_term_dir, self._long_term_dir, self._persona_dir):
             d.mkdir(parents=True, exist_ok=True)
 
+        # 启动时清理过期记忆文件（单例首次初始化即执行一次）
+        self.prune_old_files()
+
         self._cache: dict[str, str] = {}
         self._cache_valid: dict[str, bool] = {}
 
@@ -147,7 +150,12 @@ class MemoryManager:
     ) -> None:
         """从对话中提取记忆并写入 MD 文件"""
         try:
-            extraction = await self._llm_extract(user_prompt, assistant_response, session_data)
+            # 先读当前画像，供 LLM 合并去重后整体重写（而非追加）
+            current_persona = await self._load_persona()
+
+            extraction = await self._llm_extract(
+                user_prompt, assistant_response, session_data, current_persona
+            )
             if not extraction:
                 return
 
@@ -172,6 +180,7 @@ class MemoryManager:
         user_prompt: str,
         assistant_response: str,
         session_data: dict,
+        current_persona: str = "",
     ) -> dict[str, Any] | None:
         """调用 LLM 提取结构化记忆"""
         from harness.services.glm_agent_client import query as llm_query
@@ -187,19 +196,22 @@ class MemoryManager:
 涉及的股票: {symbols}
 对话领域: {domain}
 
+当前用户画像（已积累的观察）:
+{current_persona or "（暂无）"}
+
 请严格按以下JSON格式返回（不要添加任何其他文本）:
 ```json
 {{
   "short_term": "简要记录本次对话主题和关键信息（1-2句话）",
   "long_term": "提取值得长期记住的信息：投资偏好、关注领域、操作习惯、学习到的用户模式。如无则返回空字符串",
-  "persona": "关于用户性格特征的观察：沟通风格、专业程度、风险偏好、兴趣偏好。仅当有新发现时才填写，否则返回空字符串"
+  "persona": "基于当前画像和本次对话新观察，输出合并去重后的【完整用户画像】（300字以内，分条陈述）。仅当本次对话有新的画像信息时才输出，否则返回空字符串"
 }}
 ```
 
 注意:
 - short_term: 记录对话主题和关键决策点
 - long_term: 只记录用户偏好和模式，不记录具体股票数据
-- persona: 只记录新发现的性格特征，不是每次都要填写
+- persona: 输出的是完整画像而非增量——合并当前画像与新的观察，去掉重复、矛盾处以后观察为准，保持简洁
 - 如果某类没有值得记住的信息，返回空字符串"""
 
         try:
@@ -252,18 +264,16 @@ class MemoryManager:
         await asyncio.to_thread(self._append_file, filepath, entry)
 
     async def _update_persona(self, content: str) -> None:
+        """整体重写画像文件（content 为 LLM 合并去重后的完整画像）"""
         filepath = self._persona_dir / "profile.md"
-        if not filepath.exists():
-            header = "# 用户画像\n"
-            await asyncio.to_thread(self._write_file, filepath, header)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-        entry = f"\n## 更新于 {timestamp}\n{content}\n"
-        await asyncio.to_thread(self._append_file, filepath, entry)
+        full = f"# 用户画像\n\n（更新于 {timestamp}）\n\n{content}\n"
+        await asyncio.to_thread(self._write_file, filepath, full)
 
     # ---- 维护 ----
 
-    async def prune_old_files(self) -> None:
-        """清理过期记忆文件"""
+    def prune_old_files(self) -> None:
+        """清理过期记忆文件（纯文件操作，无 IO 等待，同步执行）"""
         cutoff_short = datetime.now() - timedelta(days=self.SHORT_TERM_MAX_DAYS)
         cutoff_long = datetime.now() - timedelta(days=self.LONG_TERM_MAX_DAYS)
 

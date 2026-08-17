@@ -1012,6 +1012,11 @@ class ReactOrchestrator:
     def _trigger_memory_extraction(self, session_id: str, prompt: str) -> None:
         """触发后台记忆提取任务（非阻塞）"""
         try:
+            # 定时任务是固定模板 prompt，不是真实用户行为；
+            # 提取"用户偏好"会造成画像污染与反馈循环，跳过
+            if session_id.startswith("sched_"):
+                return
+
             from harness.services.memory import get_memory_manager
             manager = get_memory_manager()
 
