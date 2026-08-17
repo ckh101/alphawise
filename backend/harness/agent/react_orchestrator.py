@@ -682,59 +682,64 @@ class ReactOrchestrator:
 
     def _build_sdk_mcp_server(self):
         """将 self.tools 注册为 SDK MCP Server，供 Claude Agent SDK 自主调用"""
-        from claude_agent_sdk import tool as sdk_tool, create_sdk_mcp_server
+        from claude_agent_sdk import tool as sdk_tool, create_sdk_mcp_server, ToolAnnotations
+
+        # 全部工具均为只读查询（TDX行情/K线/F10、搜索、分析计算、回测），
+        # 标记 readOnlyHint 允许 SDK 在同一回合内并发执行多个工具调用。
+        # 若未来加入有副作用的工具（如下单、改自选），不得标记 readOnlyHint。
+        _ro = ToolAnnotations(readOnlyHint=True)
 
         orchestrator = self  # 闭包捕获
 
-        @sdk_tool("get_stock_info", "获取股票基本信息（公司名、行业、市值等）", {"symbol": str})
+        @sdk_tool("get_stock_info", "获取股票基本信息（公司名、行业、市值等）", {"symbol": str}, annotations=_ro)
         async def _get_stock_info(args):
             r = await asyncio.to_thread(orchestrator.tools["get_stock_info"], args["symbol"])
             return {"content": [{"type": "text", "text": json.dumps(r, ensure_ascii=False, default=str)}]}
 
-        @sdk_tool("get_realtime_quote", "获取股票实时行情（当前价、涨跌幅、成交量等）", {"symbols": str})
+        @sdk_tool("get_realtime_quote", "获取股票实时行情（当前价、涨跌幅、成交量等）", {"symbols": str}, annotations=_ro)
         async def _get_realtime_quote(args):
             r = await asyncio.to_thread(orchestrator.tools["get_realtime_quote"], args["symbols"])
             return {"content": [{"type": "text", "text": json.dumps(r, ensure_ascii=False, default=str)}]}
 
-        @sdk_tool("get_kline_data", "获取K线历史数据（日K daily / 周K weekly）", {"symbol": str, "period": str})
+        @sdk_tool("get_kline_data", "获取K线历史数据（日K daily / 周K weekly）", {"symbol": str, "period": str}, annotations=_ro)
         async def _get_kline_data(args):
             r = await asyncio.to_thread(
                 orchestrator.tools["get_kline_data"], args["symbol"], args.get("period", "daily")
             )
             return {"content": [{"type": "text", "text": json.dumps(r, ensure_ascii=False, default=str)}]}
 
-        @sdk_tool("get_f10_data", "获取股票F10基本面数据（财务指标、股东、分红等）", {"symbol": str})
+        @sdk_tool("get_f10_data", "获取股票F10基本面数据（财务指标、股东、分红等）", {"symbol": str}, annotations=_ro)
         async def _get_f10_data(args):
             r = await asyncio.to_thread(orchestrator.tools["get_f10_data"], args["symbol"])
             return {"content": [{"type": "text", "text": json.dumps(r, ensure_ascii=False, default=str)}]}
 
-        @sdk_tool("analyze_stock", "AI深度分析（技术面+基本面+风险评估）", {"symbol": str, "analysis_type": str})
+        @sdk_tool("analyze_stock", "AI深度分析（技术面+基本面+风险评估）", {"symbol": str, "analysis_type": str}, annotations=_ro)
         async def _analyze_stock(args):
             r = await asyncio.to_thread(
                 orchestrator.tools["analyze_stock"], args["symbol"], args.get("analysis_type", "comprehensive")
             )
             return {"content": [{"type": "text", "text": str(r)}]}
 
-        @sdk_tool("web_search", "使用AI搜索引擎搜索资讯", {"query": str})
+        @sdk_tool("web_search", "使用AI搜索引擎搜索资讯", {"query": str}, annotations=_ro)
         async def _web_search(args):
             r = await asyncio.to_thread(orchestrator.tools["web_search"], args["query"])
             return {"content": [{"type": "text", "text": str(r)}]}
 
-        @sdk_tool("search_stock_news", "搜索股票相关新闻", {"symbol": str, "stock_name": str})
+        @sdk_tool("search_stock_news", "搜索股票相关新闻", {"symbol": str, "stock_name": str}, annotations=_ro)
         async def _search_stock_news(args):
             r = await asyncio.to_thread(
                 orchestrator.tools["search_stock_news"], args["symbol"], args.get("stock_name", "")
             )
             return {"content": [{"type": "text", "text": str(r)}]}
 
-        @sdk_tool("run_backtest", "运行策略回测（均线交叉等）", {"symbol": str, "strategy": str})
+        @sdk_tool("run_backtest", "运行策略回测（均线交叉等）", {"symbol": str, "strategy": str}, annotations=_ro)
         async def _run_backtest(args):
             r = await asyncio.to_thread(
                 orchestrator.tools["run_backtest"], args["symbol"], args.get("strategy", "ma_crossover")
             )
             return {"content": [{"type": "text", "text": str(r)}]}
 
-        @sdk_tool("list_backtest_strategies", "列出可用的回测策略列表", {})
+        @sdk_tool("list_backtest_strategies", "列出可用的回测策略列表", {}, annotations=_ro)
         async def _list_backtest_strategies(args):
             r = await asyncio.to_thread(orchestrator.tools["list_backtest_strategies"])
             return {"content": [{"type": "text", "text": json.dumps(r, ensure_ascii=False, default=str)}]}
